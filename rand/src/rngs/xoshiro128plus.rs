@@ -1,3 +1,5 @@
+use super::Rng;
+
 /// This is xoshiro128+ 1.0, our best and fastest 32-bit generator for 32-bit
 /// floating-point numbers. We suggest to use its upper bits for
 /// floating-point generation, as it is slightly faster than xoshiro128**.
@@ -19,7 +21,7 @@ impl Xoshiro128Plus {
         Self { s }
     }
 
-    fn next_u32(&mut self) -> u32 {
+    pub fn next_u32(&mut self) -> u32 {
         let result = u32::wrapping_add(self.s[0], self.s[3]);
 
         let t = self.s[1] << 9;
@@ -78,11 +80,11 @@ impl Xoshiro128Plus {
 
         self.s = s;
     }
+}
 
-    pub fn next_f32(&mut self) -> f32 {
-        let result = self.next_u32();
-
-        ((result >> 8) as f32) * f32::exp2(-24.0)
+impl Rng<u32> for Xoshiro128Plus {
+    fn gen(&mut self) -> u32 {
+        self.next_u32()
     }
 }
 
@@ -138,21 +140,6 @@ mod tests {
             0x6f969e3f, 0xc4d33728, 0xdaf8e820, 0x28925ea6,
         ] {
             assert_eq!(rng.next_u32(), expected);
-        }
-    }
-
-    #[test]
-    fn next_f32_works() {
-        let mut rng = Xoshiro128Plus::new(SEED);
-
-        for expected in [
-            0x3f79d94d, 0x3f5f6236, 0x3f7f1f08, 0x3f14ed7a, 0x3f4ba369, 0x3f493db4, 0x3dd780c8,
-            0x3f409479, 0x3c29d840, 0x3f0eb422, 0x3f0957c5, 0x3f12cde6, 0x3ebfdd68, 0x3f460d1a,
-            0x3f5181aa, 0x3f3a1921, 0x3e9294e8, 0x3ed66922, 0x3ed9a492, 0x3de38e40, 0x3e83d99c,
-            0x3f34920b, 0x3e417130, 0x3ef9a774, 0x3db166b0, 0x3f2c1082, 0x3eee26b4, 0x3f71d8bc,
-            0x3f32e518, 0x3c323b80, 0x3ebcdd6c, 0x3f2aa37b,
-        ] {
-            assert_eq!(rng.next_f32().to_bits(), expected);
         }
     }
 }

@@ -1,3 +1,5 @@
+use super::Rng;
+
 /// This is xoshiro128++ 1.0, one of our 32-bit all-purpose, rock-solid
 /// generators. It has excellent speed, a state size (128 bits) that is
 /// large enough for mild parallelism, and it passes all tests we are aware
@@ -77,6 +79,12 @@ impl Xoshiro128PlusPlus {
         }
 
         self.s = s;
+    }
+}
+
+impl Rng<u32> for Xoshiro128PlusPlus {
+    fn gen(&mut self) -> u32 {
+        self.next_u32()
     }
 }
 

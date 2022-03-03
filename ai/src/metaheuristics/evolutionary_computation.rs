@@ -1,5 +1,8 @@
 use std::ops::Range;
 
+use rand::distributions::{Distribution, UniformClosedOpen, UniformClosedOpen01};
+use rand::rngs::Rng;
+
 pub fn genetic_algorithm<R, const D: usize>(
     rng: &mut R,
     range: Range<f64>,
@@ -10,12 +13,13 @@ pub fn genetic_algorithm<R, const D: usize>(
     mutation_probability: f64,
 ) -> [f64; D]
 where
-    R: rand::rng::Rng<f64>,
+    R: Rng<<UniformClosedOpen<f64> as Distribution<f64>>::Backend>
+        + Rng<<UniformClosedOpen01 as Distribution<f64>>::Backend>,
 {
     let mut population = vec![[0.0; D]; population_size];
     for x in &mut population {
         for xi in x {
-            *xi = rng.gen_range(range.start..range.end);
+            *xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
         }
     }
     let mut fitnesses = population.iter().map(f).collect::<Vec<_>>();
@@ -39,14 +43,14 @@ where
             }
 
             let [p1, p2] = parents;
-            let a = rng.gen_range(0.0..1.0);
+            let a = rng.sample::<f64, _>(&UniformClosedOpen01);
             for j in 0..D {
                 new_population[i][j] = (1.0 - a) * population[p1][j] + a * population[p2][j];
             }
 
-            if rng.gen_range(0.0..1.0) < mutation_probability {
-                let k = rng.gen_range((0 as f64)..(D as f64)) as usize;
-                let new_xi = rng.gen_range(range.start..range.end);
+            if rng.sample::<f64, _>(&UniformClosedOpen01) < mutation_probability {
+                let k = rng.sample(&UniformClosedOpen::new(0 as f64, D as f64)) as usize;
+                let new_xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
                 new_population[i][k] = new_xi;
             }
 
@@ -74,12 +78,13 @@ pub fn differential_evolution<R, const D: usize>(
     differential_weight: f64,
 ) -> [f64; D]
 where
-    R: rand::rng::Rng<f64>,
+    R: Rng<<UniformClosedOpen<f64> as Distribution<f64>>::Backend>
+        + Rng<<UniformClosedOpen01 as Distribution<f64>>::Backend>,
 {
     let mut population = vec![[0.0; D]; population_size];
     for x in &mut population {
         for xi in x {
-            *xi = rng.gen_range(range.start..range.end);
+            *xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
         }
     }
     let mut fitnesses = population.iter().map(f).collect::<Vec<_>>();
@@ -99,9 +104,9 @@ where
                 indexes[(i + 2) % population_size],
             );
 
-            let r = rng.gen_range((0 as f64)..(D as f64)) as usize;
+            let r = rng.sample(&UniformClosedOpen::new(0 as f64, D as f64)) as usize;
             for j in 0..D {
-                let rj = rng.gen_range(0.0..1.0);
+                let rj = rng.sample::<f64, _>(&UniformClosedOpen01);
 
                 if rj < crossover_probability || j == r {
                     new_population[i][j] = population[r1][j]

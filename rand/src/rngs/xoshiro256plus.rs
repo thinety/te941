@@ -1,3 +1,5 @@
+use super::Rng;
+
 /// This is xoshiro256+ 1.0, our best and fastest generator for floating-point
 /// numbers. We suggest to use its upper bits for floating-point
 /// generation, as it is slightly faster than xoshiro256++/xoshiro256**. It
@@ -21,7 +23,7 @@ impl Xoshiro256Plus {
         Self { s }
     }
 
-    fn next_u64(&mut self) -> u64 {
+    pub fn next_u64(&mut self) -> u64 {
         let result = u64::wrapping_add(self.s[0], self.s[3]);
 
         let t = self.s[1] << 17;
@@ -90,11 +92,11 @@ impl Xoshiro256Plus {
 
         self.s = s;
     }
+}
 
-    pub fn next_f64(&mut self) -> f64 {
-        let result = self.next_u64();
-
-        ((result >> 11) as f64) * f64::exp2(-53.0)
+impl Rng<u64> for Xoshiro256Plus {
+    fn gen(&mut self) -> u64 {
+        self.next_u64()
     }
 }
 
@@ -188,32 +190,6 @@ mod tests {
             0x10834ed6e4549282,
         ] {
             assert_eq!(rng.next_u64(), expected);
-        }
-    }
-
-    #[test]
-    fn next_f64_works() {
-        let mut rng = Xoshiro256Plus::new(SEED);
-
-        for expected in [
-            0x3fa6c6c97d7cc400,
-            0x3fed3a8d2ac52486,
-            0x3fead7288fbe1ae7,
-            0x3fc852366a3dcacc,
-            0x3fe92d7f8bd9d7c8,
-            0x3fe1613753b0a68a,
-            0x3fe83dede3abca8c,
-            0x3fe0f93fc4671b5b,
-            0x3fca541e52bc142c,
-            0x3fe737183ca38c98,
-            0x3feafe8dcad30d9e,
-            0x3fed00c5cf1d8ae1,
-            0x3fe57e9c303702b1,
-            0x3fe7dd411eba035f,
-            0x3febeb48b478a880,
-            0x3fec2314b1724f2a,
-        ] {
-            assert_eq!(rng.next_f64().to_bits(), expected);
         }
     }
 }

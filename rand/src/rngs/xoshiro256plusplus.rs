@@ -1,3 +1,5 @@
+use super::Rng;
+
 /// This is xoshiro256++ 1.0, one of our all-purpose, rock-solid generators.
 /// It has excellent (sub-ns) speed, a state (256 bits) that is large
 /// enough for any parallel application, and it passes all tests we are
@@ -88,6 +90,12 @@ impl Xoshiro256PlusPlus {
         }
 
         self.s = s;
+    }
+}
+
+impl Rng<u64> for Xoshiro256PlusPlus {
+    fn gen(&mut self) -> u64 {
+        self.next_u64()
     }
 }
 
