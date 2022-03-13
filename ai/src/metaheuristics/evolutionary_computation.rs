@@ -1,28 +1,39 @@
-use std::ops::Range;
-
 use rand::distributions::{Distribution, UniformClosedOpen, UniformClosedOpen01};
 use rand::rngs::Rng;
 
-pub fn genetic_algorithm<R, const D: usize>(
+use super::Problem;
+
+pub fn genetic_algorithm<R, P, const D: usize>(
     rng: &mut R,
-    range: Range<f64>,
-    f: fn(&[f64; D]) -> f64,
     number_of_iterations: usize,
     population_size: usize,
     tournament_size: usize,
+    crossover_probability: f64,
     mutation_probability: f64,
 ) -> [f64; D]
 where
     R: Rng<<UniformClosedOpen<f64> as Distribution<f64>>::Backend>
         + Rng<<UniformClosedOpen01 as Distribution<f64>>::Backend>,
+    P: Problem<D>,
 {
     let mut population = vec![[0.0; D]; population_size];
-    for x in &mut population {
-        for xi in x {
-            *xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
+    let mut fitnesses = vec![0.0; population_size];
+
+    let mut best_individual = [0.0; D];
+    let mut best_fitness = f64::INFINITY;
+
+    for (individual, fitness) in population.iter_mut().zip(&mut fitnesses) {
+        for (x, range) in individual.iter_mut().zip(&P::RANGES) {
+            *x = rng.sample(&UniformClosedOpen::new(range.start, range.end));
+        }
+
+        *fitness = P::phi(individual);
+
+        if *fitness < best_fitness {
+            best_individual = *individual;
+            best_fitness = *fitness;
         }
     }
-    let mut fitnesses = population.iter().map(f).collect::<Vec<_>>();
 
     let mut new_population = vec![[0.0; D]; population_size];
     let mut new_fitnesses = vec![0.0; population_size];
@@ -30,48 +41,85 @@ where
     let mut indexes = (0..population_size).collect::<Vec<_>>();
 
     for _ in 0..number_of_iterations {
+        // selection (tournament)
         for i in 0..population_size {
-            let mut parents = [0; 2];
-            for parent in &mut parents {
-                rand::util::shuffle(rng, &mut indexes);
-                let (result, _) = indexes[..tournament_size]
-                    .iter()
-                    .map(|&i| (i, fitnesses[i]))
-                    .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                    .unwrap();
-                *parent = result;
-            }
+            let (j, _) = rand::util::partial_shuffle(rng, &mut indexes, tournament_size)
+                .iter()
+                .map(|&i| (i, fitnesses[i]))
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .unwrap();
 
-            let [p1, p2] = parents;
-            let a = rng.sample::<f64, _>(&UniformClosedOpen01);
-            for j in 0..D {
-                new_population[i][j] = (1.0 - a) * population[p1][j] + a * population[p2][j];
-            }
-
-            if rng.sample::<f64, _>(&UniformClosedOpen01) < mutation_probability {
-                let k = rng.sample(&UniformClosedOpen::new(0 as f64, D as f64)) as usize;
-                let new_xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
-                new_population[i][k] = new_xi;
-            }
-
-            new_fitnesses[i] = f(&new_population[i]);
+            new_population[i] = population[j];
         }
 
-        (population, new_population) = (new_population, population);
-        (fitnesses, new_fitnesses) = (new_fitnesses, fitnesses);
+        // recombination
+        {
+            let mut i = 0;
+
+            loop {
+                if rng.sample::<f64, _>(&UniformClosedOpen01) < crossover_probability {
+                    let p1 = i;
+
+                    loop {
+                        if rng.sample::<f64, _>(&UniformClosedOpen01) < crossover_probability {
+                            let p2 = i;
+
+                            let a = rng.sample::<f64, _>(&UniformClosedOpen01);
+                            for j in 0..D {
+                                (new_population[p1][j], new_population[p2][j]) = (
+                                    (1.0 - a) * new_population[p1][j] + a * new_population[p2][j],
+                                    a * new_population[p1][j] + (1.0 - a) * new_population[p2][j],
+                                );
+                            }
+
+                            break;
+                        }
+
+                        i += 1;
+                        if i >= population_size {
+                            break;
+                        }
+                    }
+                }
+
+                i += 1;
+                if i >= population_size {
+                    break;
+                }
+            }
+        }
+
+        // mutation
+        for i in 0..population_size {
+            for j in 0..D {
+                if rng.sample::<f64, _>(&UniformClosedOpen01) < mutation_probability {
+                    new_population[i][j] = rng.sample(&UniformClosedOpen::new(
+                        P::RANGES[j].start,
+                        P::RANGES[j].end,
+                    ));
+                }
+            }
+        }
+
+        // evaluation
+        for i in 0..population_size {
+            new_fitnesses[i] = P::phi(&new_population[i]);
+
+            if new_fitnesses[i] < best_fitness {
+                best_individual = new_population[i];
+                best_fitness = new_fitnesses[i];
+            }
+        }
+
+        (population, fitnesses, new_population, new_fitnesses) =
+            (new_population, new_fitnesses, population, fitnesses);
     }
 
-    let (result, _) = std::iter::zip(population, fitnesses)
-        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-        .unwrap();
-
-    result
+    best_individual
 }
 
-pub fn differential_evolution<R, const D: usize>(
+pub fn differential_evolution<R, P, const D: usize>(
     rng: &mut R,
-    range: Range<f64>,
-    f: fn(&[f64; D]) -> f64,
     number_of_iterations: usize,
     population_size: usize,
     crossover_probability: f64,
@@ -80,14 +128,18 @@ pub fn differential_evolution<R, const D: usize>(
 where
     R: Rng<<UniformClosedOpen<f64> as Distribution<f64>>::Backend>
         + Rng<<UniformClosedOpen01 as Distribution<f64>>::Backend>,
+    P: Problem<D>,
 {
     let mut population = vec![[0.0; D]; population_size];
-    for x in &mut population {
-        for xi in x {
-            *xi = rng.sample(&UniformClosedOpen::new(range.start, range.end));
+    let mut fitnesses = vec![0.0; population_size];
+
+    for (individual, fitness) in population.iter_mut().zip(&mut fitnesses) {
+        for (x, range) in individual.iter_mut().zip(&P::RANGES) {
+            *x = rng.sample(&UniformClosedOpen::new(range.start, range.end));
         }
+
+        *fitness = P::phi(individual);
     }
-    let mut fitnesses = population.iter().map(f).collect::<Vec<_>>();
 
     let mut new_population = vec![[0.0; D]; population_size];
     let mut new_fitnesses = vec![0.0; population_size];
@@ -116,21 +168,24 @@ where
                 }
             }
 
-            new_fitnesses[i] = f(&new_population[i]);
+            new_fitnesses[i] = P::phi(&new_population[i]);
         }
 
-        for ((x, y), (new_x, new_y)) in std::iter::zip(
-            std::iter::zip(&mut population, &mut fitnesses),
-            std::iter::zip(&new_population, &new_fitnesses),
-        ) {
-            if new_y < y {
-                *x = *new_x;
-                *y = *new_y;
+        for ((individual, fitness), (new_individual, new_fitness)) in population
+            .iter_mut()
+            .zip(&mut fitnesses)
+            .zip(new_population.iter().zip(&new_fitnesses))
+        {
+            if new_fitness < fitness {
+                *individual = *new_individual;
+                *fitness = *new_fitness;
             }
         }
     }
 
-    let (result, _) = std::iter::zip(population, fitnesses)
+    let (result, _) = population
+        .into_iter()
+        .zip(fitnesses)
         .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
         .unwrap();
 
